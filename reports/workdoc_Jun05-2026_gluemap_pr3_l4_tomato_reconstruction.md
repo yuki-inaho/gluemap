@@ -66,12 +66,32 @@
 - [x] 2026-06-05 12:58頃: `pixi run download-checkpoints-minimal` -> `checkpoints/pi3.safetensors` と `checkpoints/dino_salad.ckpt` を取得。
 - [x] 2026-06-05 12:58-12:59頃: `pixi run gluemap-demo --config configs/tomato_l4_smoke.yaml --rerun_from retrieval` を実行し成功。12画像、global rotations 12、global centers 12、valid virtual points 3770、`coarse_only` により refinement はスキップ。出力: `results/tomato_l4_smoke/coarse/{cameras,frames,images,points3D,rigs}.bin`, `pipeline_timing.pth`, `salad_descriptors.pt`, `star_result.pth`。
 
-## 現時点の findings / tips
+## Struggles / Findings / Tips
+
+### Struggles
+
+- PR #3 は Blackwell `sm_120` 前提の色が強く、このPCの L4 `sm_89` にそのまま固定して取り込むと後続PCで再利用しにくい。Ceres/COLMAP/pycolmap の各ビルド経路へ `GLUEMAP_CUDA_ARCH` を通す必要があった。
+- Ubuntu 20.04 / GLIBC 2.31 と conda-forge `OpenImageIO 3.1` が不整合で、`pycolmap` import 時に `GLIBC_2.32` 要求で落ちた。単純な conda downgrade は依存衝突が大きく、system `libOpenImageIO.so.2.1` へ逃がす方針に切り替えた。
+- `OpenImageIO` の include path を CMake target に載せる際、C++ 向け compile option が CUDA compile に伝播し、`nvcc fatal: A single input file is required ...` を引き起こした。generator expression で C++ のみに限定する必要があった。
+- Pixi task の依存関係上、`gluemap-tomato-smoke` は install task も再実行しやすい。ビルド済み環境で smoke だけ確認する場合は `gluemap-demo` を直接呼ぶ方が安全だった。
+- 24GB GPU でも default 設定のままでは上流 issue #7 と同様の OOM リスクがあるため、tomato smoke は低メモリ設定から始める必要があった。
+
+### Findings
 
 - L4 は compute capability `sm_89`。PR #3 は Blackwell `sm_120` を主対象にしているため、そのまま固定するのではなく `GLUEMAP_CUDA_ARCH` で可変化する必要がある。
 - 上流 issue #7 と同じ 24GB級GPUでは default `batch_size=30`, `pin_memory=True`, `num_workers=4` は危険。smoke は `batch_size=1`, `num_workers=0`, `pin_memory=false`, `skip_doppelgangers=true`, `use_dummy_tracks=true`, `coarse_only=true` から始める。
 - トマト入力候補は `/home/kasm-user/Desktop/NYX660_2025_12_01_17_33_27_0135/Color`。全1220枚を直投入せず、まず 12枚程度の stride subset で pipeline を検証する。
 - Ubuntu 20.04 / GLIBC 2.31 では conda-forge OpenImageIO 3.1 が使えない。`libopenimageio-dev` の system OIIO 2.1 に逃がし、COLMAP/pycolmap 用の `FindOpenImageIO.cmake` を source と install prefix の両方へ生成する必要がある。
-- `INTERFACE_COMPILE_OPTIONS "-idirafter;/usr/include"` をそのまま OpenImageIO target に載せると CUDA compile にも伝播し、`nvcc fatal: A single input file is required ...` で落ちる。`$<$<COMPILE_LANGUAGE:CXX>:...>` で C++ のみに限定する。
-- `pixi run gluemap-tomato-smoke` は依存 task として install も再実行する。環境が既に入っている場合は `pixi run gluemap-demo --config configs/tomato_l4_smoke.yaml --rerun_from retrieval` を直接実行すると無駄な再ビルドを避けられる。
 - 生成物サイズ: `.pixi` 13G、`checkpoints` 3.9G、`results/tomato_l4_smoke` 2.3M、`data/tomato_nyx660_color_smoke` は symlink subset で 8K。これらは `.gitignore` 対象で commit しない。
+
+### Tips
+
+- CUDA arch は `GLUEMAP_CUDA_ARCH=89 pixi run install-gluemap` のように指定する。Blackwell は `120`、複数GPU向け配布は `GLUEMAP_CUDA_ARCH='89;120'` のような CMake semicolon list を使う。
+- 既に install 済みの環境で tomato smoke だけ再実行する場合は、`pixi run gluemap-demo --config configs/tomato_l4_smoke.yaml --rerun_from retrieval` を使う。
+- `pycolmap` 周りを再ビルドした後は、`pixi run check-gluemap` と `ldd .pixi/envs/default/lib/python3.11/site-packages/pycolmap/_core*.so | grep OpenImageIO` で import と OIIO 解決先を確認する。
+- L4 で最初に再構成を試すなら `configs/tomato_l4_smoke.yaml` の 12枚 coarse-only smoke から始め、成功後に枚数・batch・Doppelgangers/refinement を段階的に戻す。
+- 作業終了時点の diary コピーは `/home/kasm-user/Desktop/diary/diary_Jun05-2026_gluemap_pr3_l4_tomato_reconstruction.md` に配置する。
+
+## Diary copy
+
+- 2026-06-05 13:10:00 UTC+0000: 本作業書に Struggles / Findings / Tips を明示追記し、Desktop diary 側にも同内容を残す。
