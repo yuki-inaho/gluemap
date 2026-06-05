@@ -1,0 +1,12 @@
+# Tomato NYX660 smoke config for the Desktop/L4 workstation.
+#
+# Build the input image subset first:
+#   pixi run make-tomato-smoke-subset
+#
+# Then run:
+#   pixi run gluemap-tomato-smoke
+
+_base_: l4_lowmem.yaml
+
+images_path: data/tomato_nyx660_color_smoke
+write_path: results/tomato_l4_smoke

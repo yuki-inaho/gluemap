@@ -140,7 +140,7 @@ class BaseInferencePipeline(abc.ABC):
             sampler=sampler,
             batch_size=self._batch_size(),
             num_workers=self.args.num_workers,
-            pin_memory=True,
+            pin_memory=getattr(self.args, "pin_memory", True),
             drop_last=False,
         )
 

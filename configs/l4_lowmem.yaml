@@ -1,0 +1,32 @@
+# L4 / 24GB-class low-memory defaults.
+#
+# This config is intended for first-pass reconstruction smoke tests on a single
+# GPU. It keeps the GLUEMAP bbox/output contract unchanged, but reduces the
+# memory pressure reported in upstream issue #7 by avoiding pinned-memory
+# DataLoader transfers and using batch size 1 for two-view inference.
+
+_base_: base.yaml
+
+# Keep only sequential pairs unless explicitly overridden. For ordered video
+# captures this is usually enough for a first reconstruction, and it avoids the
+# default 100-neighbor retrieval fan-out.
+is_sequential: true
+sample_frequency: 1
+num_neighbors: 0
+num_neighbors_sequential: 4
+
+# 24GB-class GPU safety knobs.
+batch_size: 1
+retrieval_batch_size: 8
+num_workers: 0
+pin_memory: false
+
+# Fast smoke path: skip the heaviest optional models. Remove these overrides
+# for a full-quality run after the environment is validated.
+skip_doppelgangers: true
+use_dummy_tracks: true
+coarse_only: true
+
+# Keep the default simple camera unless explicit intrinsics are provided.
+camera_model: SIMPLE_PINHOLE
+intrinsics_mode: SHARED

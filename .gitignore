@@ -1,6 +1,12 @@
 checkpoints/
+data/
 pybind_build/
 results/
+tmp/
 venv_gluemap/
 
 *.pyc
+__pycache__/
+.pixi/*
+!.pixi/config.toml
+thirdparty/*/build/

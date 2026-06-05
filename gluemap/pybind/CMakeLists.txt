@@ -23,10 +23,20 @@ target_include_directories(pygluemap PRIVATE
 )
 target_link_libraries(pygluemap PRIVATE pybind11::module Eigen3::Eigen ${CERES_LIBRARIES} Boost::headers)
 target_compile_definitions(pygluemap PRIVATE cxx_std_17)
+set(CERES_HAS_CUDA FALSE)
+get_target_property(
+    CERES_INTERFACE_LINK_LIBRARIES
+    Ceres::ceres
+    INTERFACE_LINK_LIBRARIES
+)
+if (CERES_INTERFACE_LINK_LIBRARIES)
+    string(FIND "${CERES_INTERFACE_LINK_LIBRARIES}" "cudss" CERES_CUDSS_POS)
+    if (NOT "${CERES_CUDSS_POS}" STREQUAL "-1")
+        set(CERES_HAS_CUDA TRUE)
+    endif()
+endif()
 if (TARGET Ceres::ceres_cuda_kernels)
     set(CERES_HAS_CUDA TRUE)
-else()
-    set(CERES_HAS_CUDA FALSE)
 endif()
 message(STATUS "Ceres CUDA support: ${CERES_HAS_CUDA}")
 

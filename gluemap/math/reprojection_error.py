@@ -18,6 +18,26 @@ class ReprojectionErrorType(Enum):
     ANGULAR = "angular"
 
 
+def _representative_focal_length(camera: pycolmap.Camera) -> float:
+    """Return a scalar focal length for normalized reprojection errors.
+
+    ``pycolmap.Camera.focal_length`` is only valid for camera models with a
+    single focal parameter (for example ``SIMPLE_PINHOLE``). Models such as
+    ``PINHOLE`` carry ``fx`` and ``fy`` and raise when that scalar accessor is
+    used. For normalization, the arithmetic mean of focal-like parameters is a
+    stable scalar proxy and avoids model-specific branching in callers.
+    """
+    try:
+        return float(camera.focal_length)
+    except Exception:
+        params = np.asarray(camera.params, dtype=np.float64)
+        if params.size >= 2:
+            return float(np.mean(params[:2]))
+        if params.size == 1:
+            return float(params[0])
+        raise ValueError("Camera has no focal parameters") from None
+
+
 def compute_point_error(
     world_point: np.ndarray,
     R: np.ndarray,
@@ -69,7 +89,7 @@ def compute_point_error(
             + (projected[1] - observed[1]) ** 2
         )
         if error_type == ReprojectionErrorType.NORMALIZED:
-            return pixel_error / camera.focal_length
+            return pixel_error / _representative_focal_length(camera)
         return pixel_error
 
 
@@ -123,7 +143,7 @@ def _compute_errors_batch(
         projected = camera.img_from_cam(X_proc[valid])  # (M, 2)
         pixel_errors = np.linalg.norm(projected - observed[valid], axis=1)
         if error_type == ReprojectionErrorType.NORMALIZED:
-            pixel_errors = pixel_errors / camera.focal_length
+            pixel_errors = pixel_errors / _representative_focal_length(camera)
         errors[valid] = pixel_errors
 
     return errors

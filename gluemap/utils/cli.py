@@ -196,6 +196,15 @@ def get_args_parser() -> argparse.ArgumentParser:
         help="number of workers for data loading",
     )
     parser.add_argument(
+        "--pin_memory",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "pin DataLoader memory before GPU transfer. Disable with "
+            "--no-pin_memory on memory-constrained or WSL-like setups."
+        ),
+    )
+    parser.add_argument(
         "--batch_size",
         default=30,
         type=int,

@@ -50,6 +50,12 @@ CMAKE_PREFIX_PATH=$CONDA_PREFIX pip install -e .
 
 For the reproducible conda/micromamba recipe (pinned versions, CUDA
 notes, libstdc++ ABI troubleshooting), see [INSTALL.md](INSTALL.md).
+This fork also carries the Pixi setup from upstream PR #3, adapted so
+`GLUEMAP_CUDA_ARCH` can target L4/Ada (`89`, default), Blackwell (`120`),
+or a multi-arch build (`'89;120'`).
+On Ubuntu 20.04 hosts, install `libopenimageio-dev` and let the Pixi
+tasks link COLMAP/pycolmap to the system OpenImageIO; conda-forge's
+newer OpenImageIO requires a newer GLIBC than this workstation provides.
 
 The default config expects four model checkpoints under `checkpoints/`
 (Pi3, SALAD, VGGSfM tracker, Doppelgangers++). Download commands are in
@@ -61,6 +67,19 @@ Verify the install:
 python -c "import gluemap; import pygluemap; print(pygluemap.__file__)"
 gluemap-demo --help
 ```
+
+On the Desktop/L4 tomato workstation, a low-memory smoke run can be
+started with:
+
+```bash
+pixi run make-tomato-smoke-subset
+pixi run gluemap-tomato-smoke
+```
+
+See [INSTALL.md §L4 / 24GB tomato smoke](INSTALL.md#l4--24gb-tomato-smoke)
+for the tradeoffs in that config. The checked smoke path uses 12 NYX660
+frames, skips Doppelgangers++/refinement, and writes COLMAP-format coarse
+output under `results/tomato_l4_smoke/coarse`.
 
 ## Usage
 
