@@ -5,6 +5,7 @@ results/
 tmp/
 venv_gluemap/
 
+/*.log
 *.pyc
 __pycache__/
 .pixi/*

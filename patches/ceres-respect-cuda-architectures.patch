@@ -1,0 +1,52 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 19ee2a86..02cff980 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -324,8 +324,10 @@ if (USE_CUDA)
+         "find_dependency(CUDAToolkit ${CUDAToolkit_VERSION})")
+       enable_language(CUDA)
+       if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.18")
+-        set(CMAKE_CUDA_ARCHITECTURES "")
+-        if (CUDAToolkit_VERSION VERSION_LESS "13.0")
++        if (NOT CMAKE_CUDA_ARCHITECTURES)
++          set(CMAKE_CUDA_ARCHITECTURES "")
++        endif()
++        if (NOT CMAKE_CUDA_ARCHITECTURES AND CUDAToolkit_VERSION VERSION_LESS "13.0")
+           # Support Maxwell GPUs.
+ 	  list(APPEND CMAKE_CUDA_ARCHITECTURES "50")
+           if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL "8.0")
+@@ -336,19 +338,21 @@ if (USE_CUDA)
+             # Support Volta GPUs.
+             list(APPEND CMAKE_CUDA_ARCHITECTURES "70")
+           endif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "9.0")
+-        endif(CUDAToolkit_VERSION VERSION_LESS "13.0")
+-        if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL "10.0")
+-          # Support Turing  GPUs.
+-          list(APPEND CMAKE_CUDA_ARCHITECTURES "75")
+-        endif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "10.0")
+-        if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL "11.0")
+-          # Support Ampere GPUs.
+-          list(APPEND CMAKE_CUDA_ARCHITECTURES "80")
+-        endif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "11.0")
+-        if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL "11.8")
+-          # Support Hopper GPUs.
+-          list(APPEND CMAKE_CUDA_ARCHITECTURES "90")
+-        endif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "11.8")
++        endif()
++        if (NOT CMAKE_CUDA_ARCHITECTURES)
++          if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL "10.0")
++            # Support Turing GPUs.
++            list(APPEND CMAKE_CUDA_ARCHITECTURES "75")
++          endif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "10.0")
++          if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL "11.0")
++            # Support Ampere GPUs.
++            list(APPEND CMAKE_CUDA_ARCHITECTURES "80")
++          endif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "11.0")
++          if (CUDAToolkit_VERSION VERSION_GREATER_EQUAL "11.8")
++            # Support Hopper GPUs.
++            list(APPEND CMAKE_CUDA_ARCHITECTURES "90")
++          endif(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "11.8")
++        endif()
+         message("-- Setting CUDA Architecture to ${CMAKE_CUDA_ARCHITECTURES}")
+       endif()
+ 
