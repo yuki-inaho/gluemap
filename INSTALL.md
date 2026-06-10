@@ -75,6 +75,7 @@ sudo apt install \
     libceres-dev \
     libmetis-dev \
     libboost-dev \
+    libopenimageio-dev \
     pybind11-dev
 ```
 
