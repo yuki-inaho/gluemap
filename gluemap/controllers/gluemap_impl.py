@@ -306,6 +306,16 @@ class GluemapPipeline:
                 camera_model=dataset_pair.camera_model,
                 skip_matching=False,
                 remove_existing=True,
+                feature_extractor=getattr(args, "feature_extractor", "SIFT"),
+                feature_matcher=getattr(args, "feature_matcher", None),
+                feature_pairing=getattr(args, "feature_pairing", "imported"),
+                feature_backend=getattr(args, "feature_backend", "auto"),
+                sequential_overlap=(
+                    getattr(args, "feature_sequential_overlap", None)
+                    if getattr(args, "feature_sequential_overlap", None)
+                    is not None
+                    else getattr(args, "num_neighbors_sequential", None)
+                ),
             )
         timing["sift_database"] = time.perf_counter() - t0
 

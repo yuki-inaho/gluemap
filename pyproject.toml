@@ -13,8 +13,8 @@ dependencies = [
     # Versions pinned to the known-good gluemap micromamba env.
     "numpy==2.4.3",
     "scipy==1.17.1",
-    "torch==2.4.1",
-    "torchvision==0.19.1",
+    "torch==2.6.0",
+    "torchvision==0.21.0",
     "pycolmap-cuda12==4.0.4",
     "pyceres==2.6",
     "h5py==3.16.0",
@@ -25,7 +25,7 @@ dependencies = [
     "imagesize==2.0.0",
     "safetensors==0.7.0",
     "pyyaml==6.0.3",
-    "faiss-cpu==1.13.2",
+    "faiss-cpu==1.10.0",
     # Transitive runtime deps of the vendored thirdparty/* repos
     # (mapanything, pi3, vggt, doppelgangers-plusplus). They are imported
     # at module load via thirdparty/path_to_thirdparty.py, so they need

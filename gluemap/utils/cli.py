@@ -135,6 +135,59 @@ def get_args_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--feature_extractor",
+        default="SIFT",
+        type=str,
+        help=(
+            "COLMAP feature extractor for refinement tracks "
+            "(e.g. SIFT, ALIKED_N16ROT, ALIKED_N32)"
+        ),
+    )
+
+    parser.add_argument(
+        "--feature_matcher",
+        default=None,
+        type=str,
+        help=(
+            "COLMAP feature matcher for refinement tracks "
+            "(e.g. SIFT_BRUTEFORCE, SIFT_LIGHTGLUE, ALIKED_LIGHTGLUE). "
+            "If omitted, a matcher compatible with --feature_extractor is used."
+        ),
+    )
+
+    parser.add_argument(
+        "--feature_pairing",
+        default="imported",
+        choices=["imported", "sequential"],
+        type=str,
+        help=(
+            "pairing strategy for local feature matching: imported uses the "
+            "GLUEMAP pair graph, sequential uses COLMAP sequential matching"
+        ),
+    )
+
+    parser.add_argument(
+        "--feature_backend",
+        default="auto",
+        choices=["auto", "pycolmap", "colmap_cli"],
+        type=str,
+        help=(
+            "feature extraction backend. auto uses COLMAP CLI for ALIKED "
+            "because some pycolmap wheels lack ONNX support."
+        ),
+    )
+
+    parser.add_argument(
+        "--feature_sequential_overlap",
+        default=None,
+        type=int,
+        help=(
+            "COLMAP sequential matcher overlap. Defaults to "
+            "--num_neighbors_sequential when feature_pairing=sequential."
+        ),
+    )
+
+    parser.add_argument(
         "--camera_model",
         default="SIMPLE_PINHOLE",
         type=str,

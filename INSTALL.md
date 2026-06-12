@@ -40,14 +40,16 @@ build is the only supported configuration:
 
 ```
 micromamba install -n <env> -c conda-forge \
-    eigen=3.4.0 \
+    eigen=5.0.1 \
     ceres-solver=2.2.0 \
     metis=5.1.0 \
-    boost=1.85.0 \
+    boost=1.88.0 \
     libstdcxx-ng=15.2.0 \
-    pytorch-gpu=2.4.1 \
-    torchvision=0.19.1 \
-    cuda-version=12.4
+    pytorch-gpu=2.6.0 \
+    torchvision=0.21.0 \
+    cuda-version=12.9 \
+    colmap=4.0.4 \
+    faiss-cpu=1.10.0
 ```
 
 Installing PyTorch from conda-forge (rather than pip) is strongly
@@ -56,6 +58,15 @@ Ceres, which avoids a runtime ABI clash where `import torch` loads the
 older system `libstdc++` first and then `import pygluemap` fails with
 ``version `CXXABI_1.3.15' not found``. See the troubleshooting section
 if you hit this.
+
+The `colmap` package is required for the default refinement feature stack
+(`feature_extractor: ALIKED_N16ROT`, `feature_matcher: ALIKED_LIGHTGLUE`,
+`feature_pairing: sequential`). Current `pycolmap-cuda12` wheels expose the
+ALIKED/LightGlue enums but may be built without ONNX runtime support; GLUEMAP
+therefore uses the external conda-forge `colmap` binary for ALIKED/LightGlue
+feature extraction and matching. `faiss-cpu` is installed from conda-forge so
+that both Python retrieval and the COLMAP binary can resolve the FAISS runtime
+library.
 
 If you want CMake to discover the C++ deps without setting
 `CMAKE_PREFIX_PATH` manually, also install the conda compilers (their
@@ -183,9 +194,9 @@ pytest tests/
   ```
   pip uninstall -y torch torchvision
   micromamba install -n <env> -c conda-forge \
-      pytorch-gpu=2.4.1 \
-      torchvision=0.19.1 \
-      cuda-version=12.4
+      pytorch-gpu=2.6.0 \
+      torchvision=0.21.0 \
+      cuda-version=12.9
   ```
 
   As a per-shell workaround you can also force the conda libstdc++ to

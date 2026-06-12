@@ -18,6 +18,11 @@ temp_path: ./tmp
 # Processing
 num_track_per_img: 1024
 max_num_tracks: null
+feature_extractor: ALIKED_N16ROT
+feature_matcher: ALIKED_LIGHTGLUE
+feature_pairing: sequential
+feature_backend: auto
+feature_sequential_overlap: null
 camera_model: SIMPLE_PINHOLE
 intrinsics_mode: SHARED
 num_neighbors: 100

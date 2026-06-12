@@ -1,6 +1,9 @@
 import logging
 import os
+import shutil
+import subprocess
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pycolmap
@@ -10,6 +13,180 @@ from tqdm import tqdm
 from gluemap.estimators.track_establishment import TrackEstablishment
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_colmap_enum_name(value: str) -> str:
+    return value.strip().upper().replace("-", "_").replace(" ", "_")
+
+
+def _resolve_feature_extractor_type(
+    feature_extractor: str | pycolmap.FeatureExtractorType,
+) -> pycolmap.FeatureExtractorType:
+    """Resolve a config string to a pycolmap feature extractor enum."""
+    if isinstance(feature_extractor, pycolmap.FeatureExtractorType):
+        return feature_extractor
+
+    name = _normalize_colmap_enum_name(feature_extractor)
+    aliases = {
+        "ALIKED": "ALIKED_N16ROT",
+        "ALIKE": "ALIKED_N16ROT",
+        "ALIKED_N16": "ALIKED_N16ROT",
+    }
+    name = aliases.get(name, name)
+    try:
+        return pycolmap.FeatureExtractorType.__members__[name]
+    except KeyError as e:
+        choices = ", ".join(pycolmap.FeatureExtractorType.__members__)
+        raise ValueError(
+            f"Unsupported feature_extractor={feature_extractor!r}; "
+            f"expected one of: {choices}"
+        ) from e
+
+
+def _resolve_feature_matcher_type(
+    feature_matcher: str | pycolmap.FeatureMatcherType | None,
+    extractor_type: pycolmap.FeatureExtractorType,
+) -> pycolmap.FeatureMatcherType:
+    """Resolve matcher config, choosing a compatible default when omitted."""
+    if isinstance(feature_matcher, pycolmap.FeatureMatcherType):
+        return feature_matcher
+
+    if feature_matcher is None:
+        if extractor_type.name.startswith("ALIKED"):
+            return pycolmap.FeatureMatcherType.ALIKED_LIGHTGLUE
+        return pycolmap.FeatureMatcherType.SIFT_BRUTEFORCE
+
+    name = _normalize_colmap_enum_name(feature_matcher)
+    aliases = {
+        "SIFT": "SIFT_BRUTEFORCE",
+        "SIFT_BF": "SIFT_BRUTEFORCE",
+        "LIGHTGLUE": (
+            "ALIKED_LIGHTGLUE"
+            if extractor_type.name.startswith("ALIKED")
+            else "SIFT_LIGHTGLUE"
+        ),
+        "ALIKE_LIGHTGLUE": "ALIKED_LIGHTGLUE",
+    }
+    name = aliases.get(name, name)
+    try:
+        return pycolmap.FeatureMatcherType.__members__[name]
+    except KeyError as e:
+        choices = ", ".join(pycolmap.FeatureMatcherType.__members__)
+        raise ValueError(
+            f"Unsupported feature_matcher={feature_matcher!r}; "
+            f"expected one of: {choices}"
+        ) from e
+
+
+def _set_option_if_present(options: Any, name: str, value: Any) -> None:
+    if value is not None and hasattr(options, name):
+        setattr(options, name, value)
+
+
+def _colmap_cli_has_cuda(colmap_path: str) -> bool:
+    try:
+        result = subprocess.run(
+            [colmap_path, "-h"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    first_line = (result.stdout + result.stderr).splitlines()[:1]
+    return bool(first_line) and "without CUDA" not in first_line[0]
+
+
+def _run_colmap_command(cmd: list[str]) -> None:
+    logger.info("Running COLMAP command: %s", " ".join(cmd))
+    subprocess.run(cmd, check=True)
+
+
+def _prepare_feature_database_with_colmap_cli(
+    dir_write: str,
+    images_path: str,
+    images_list: list[str],
+    intrinsics_mapping: dict[int, int],
+    database_dir: str,
+    camera_model: str,
+    extractor_type: pycolmap.FeatureExtractorType,
+    matcher_type: pycolmap.FeatureMatcherType,
+    pairing_mode: str,
+    use_gpu: bool,
+    gpu_index: str,
+    sequential_overlap: int | None,
+    sequential_quadratic_overlap: bool | None,
+) -> None:
+    """Use the COLMAP CLI for feature stacks unavailable in pycolmap wheels."""
+    colmap_path = shutil.which("colmap")
+    if colmap_path is None:
+        raise RuntimeError(
+            "COLMAP CLI is required for this feature backend but was not found"
+        )
+
+    image_list_path = os.path.join(dir_write, "image-list.txt")
+    with open(image_list_path, "w") as f:
+        for image_name in images_list:
+            f.write(f"{image_name}\n")
+
+    cli_use_gpu = use_gpu and _colmap_cli_has_cuda(colmap_path)
+    cli_gpu_index = gpu_index if cli_use_gpu else "-1"
+
+    _run_colmap_command(
+        [
+            colmap_path,
+            "feature_extractor",
+            "--database_path",
+            database_dir,
+            "--image_path",
+            images_path,
+            "--image_list_path",
+            image_list_path,
+            "--ImageReader.camera_model",
+            camera_model,
+            "--ImageReader.single_camera_per_image",
+            "1",
+            "--FeatureExtraction.type",
+            extractor_type.name,
+            "--FeatureExtraction.use_gpu",
+            "1" if cli_use_gpu else "0",
+            "--FeatureExtraction.gpu_index",
+            cli_gpu_index,
+        ]
+    )
+    database = pycolmap.Database.open(database_dir)
+    remap_cameras_to_intrinsics(database, images_list, intrinsics_mapping)
+
+    if pairing_mode != "SEQUENTIAL":
+        raise ValueError(
+            "feature_pairing must be either 'imported' or 'sequential', "
+            f"got {pairing_mode!r}"
+        )
+    matching_cmd = [
+        colmap_path,
+        "sequential_matcher",
+        "--database_path",
+        database_dir,
+        "--FeatureMatching.type",
+        matcher_type.name,
+        "--FeatureMatching.use_gpu",
+        "1" if cli_use_gpu else "0",
+        "--FeatureMatching.gpu_index",
+        cli_gpu_index,
+    ]
+    if sequential_overlap is not None:
+        matching_cmd.extend(
+            ["--SequentialMatching.overlap", str(sequential_overlap)]
+        )
+    if sequential_quadratic_overlap is not None:
+        matching_cmd.extend(
+            [
+                "--SequentialMatching.quadratic_overlap",
+                "1" if sequential_quadratic_overlap else "0",
+            ]
+        )
+    _run_colmap_command(matching_cmd)
 
 
 def camera_from_intrinsics_matrix(
@@ -629,20 +806,28 @@ def prepare_sift_database(
     camera_model: str = "SIMPLE_RADIAL",
     skip_matching: bool = False,
     remove_existing: bool = True,
+    feature_extractor: str | pycolmap.FeatureExtractorType = "SIFT",
+    feature_matcher: str | pycolmap.FeatureMatcherType | None = None,
+    feature_pairing: str = "imported",
+    sequential_overlap: int | None = None,
+    sequential_quadratic_overlap: bool | None = None,
+    feature_backend: str = "auto",
 ) -> bool:
-    """Extract SIFT features and match the given pairs into a COLMAP database.
+    """Extract local features and match them into a COLMAP database.
 
-    Runs ``pycolmap.extract_features`` on ``images_list`` (under
-    ``images_path``) into ``dir_write/database_sift.db``, then remaps
-    camera IDs to follow ``intrinsics_mapping`` and (unless
-    ``skip_matching``) runs SIFT matching on ``pairs``.
+    Runs ``pycolmap.extract_features`` on ``images_list`` under
+    ``images_path`` into ``dir_write/database_sift.db`` (name retained for
+    backwards compatibility), then remaps camera IDs to follow
+    ``intrinsics_mapping`` and, unless ``skip_matching`` is set, matches either
+    imported pairs or COLMAP's sequential pairing.
 
     Args:
         dir_write: Output directory holding the database and pairs file.
         images_path: Root directory of the input images.
         images_list: Image names relative to ``images_path``.
         intrinsics_mapping: Maps each image index to a camera id.
-        pairs: ``(M, 2)`` int array of image-index pairs to match.
+        pairs: ``(M, 2)`` int array of image-index pairs to match when using
+            imported pairing.
         device: Where to run SIFT extraction and matching. ``"cuda"`` uses
             all visible CUDA devices, ``"cuda:N"`` selects a single device,
             and ``"cpu"`` disables GPU.
@@ -650,6 +835,20 @@ def prepare_sift_database(
         skip_matching: If set, return immediately after feature extraction.
         remove_existing: If set, delete any existing database at the target
             path before writing.
+        feature_extractor: COLMAP feature extractor enum name, e.g. ``SIFT``,
+            ``ALIKED_N16ROT``, or ``ALIKED_N32``.
+        feature_matcher: COLMAP matcher enum name. When omitted, SIFT uses
+            ``SIFT_BRUTEFORCE`` and ALIKED uses ``ALIKED_LIGHTGLUE``.
+        feature_pairing: ``imported`` to match the provided ``pairs`` or
+            ``sequential`` to use COLMAP's sequential matcher.
+        sequential_overlap: Sequential matcher overlap. If omitted, pycolmap's
+            default is used.
+        sequential_quadratic_overlap: Optional sequential matcher quadratic
+            overlap override.
+        feature_backend: ``pycolmap`` for in-process feature extraction,
+            ``colmap_cli`` for the external COLMAP binary, or ``auto``. In
+            ``auto`` mode ALIKED uses the CLI because current pycolmap wheels
+            may expose ALIKED enums while lacking ONNX runtime support.
 
     Returns:
         ``True`` on success.
@@ -667,52 +866,119 @@ def prepare_sift_database(
     else:
         raise ValueError(f"Unsupported device: {device!r}")
 
-    datbase_dir = dir_write + "/database_sift.db"
-    if os.path.exists(datbase_dir) and remove_existing:
-        os.remove(datbase_dir)
+    database_dir = dir_write + "/database_sift.db"
+    if os.path.exists(database_dir) and remove_existing:
+        os.remove(database_dir)
 
     camera_mode = "PER_IMAGE"
 
     images_list = [str(Path(p)) for p in images_list]
+    extractor_type = _resolve_feature_extractor_type(feature_extractor)
+    matcher_type = _resolve_feature_matcher_type(
+        feature_matcher, extractor_type
+    )
+    pairing_mode = _normalize_colmap_enum_name(feature_pairing)
+    backend = _normalize_colmap_enum_name(feature_backend)
 
-    # Extract the features for all images
+    if backend == "AUTO":
+        backend = (
+            "COLMAP_CLI"
+            if extractor_type.name.startswith("ALIKED")
+            else "PYCOLMAP"
+        )
+
+    if backend == "COLMAP_CLI":
+        if pairing_mode != "SEQUENTIAL":
+            raise ValueError(
+                "feature_backend='colmap_cli' currently supports "
+                "feature_pairing='sequential' only"
+            )
+        _prepare_feature_database_with_colmap_cli(
+            dir_write,
+            images_path,
+            images_list,
+            intrinsics_mapping,
+            database_dir,
+            camera_model,
+            extractor_type,
+            matcher_type,
+            pairing_mode,
+            use_gpu,
+            gpu_index,
+            sequential_overlap,
+            sequential_quadratic_overlap,
+        )
+        return True
+    if backend != "PYCOLMAP":
+        raise ValueError(
+            "feature_backend must be 'auto', 'pycolmap', or 'colmap_cli', "
+            f"got {feature_backend!r}"
+        )
+
+    # Extract the features for all images.
     reader_opts = pycolmap.ImageReaderOptions()
     reader_opts.camera_model = camera_model
+    extraction_options = pycolmap.FeatureExtractionOptions()
+    extraction_options.type = extractor_type
+    _set_option_if_present(extraction_options, "num_threads", 16)
+    _set_option_if_present(extraction_options, "gpu_index", gpu_index)
+    _set_option_if_present(extraction_options, "use_gpu", use_gpu)
     pycolmap.extract_features(
-        datbase_dir,
+        database_dir,
         images_path,
         images_list,
         camera_mode,
         reader_opts,
-        extraction_options=pycolmap.FeatureExtractionOptions(
-            num_threads=16, gpu_index=gpu_index, use_gpu=use_gpu
-        ),
-    )  # use the same camera model for all images
+        extraction_options=extraction_options,
+    )
 
-    database = pycolmap.Database.open(datbase_dir)
+    database = pycolmap.Database.open(database_dir)
     remap_cameras_to_intrinsics(database, images_list, intrinsics_mapping)
 
     if skip_matching:
         return True
 
-    matched_pairs = list({(int(i), int(j)) for i, j in pairs.tolist()})
-
-    # Write the match pair to a file
-    with open(dir_write + "/pairs.txt", "w") as f:
-        for i, j in matched_pairs:
-            f.write(f"{images_list[i]} {images_list[j]}\n")
-
-    pairs_path = dir_write + "/pairs.txt"
     matching_options = pycolmap.FeatureMatchingOptions()
+    matching_options.type = matcher_type
     matching_options.gpu_index = gpu_index
     matching_options.use_gpu = use_gpu
-    pairing_options = pycolmap.ImportedPairingOptions()
-    pairing_options.match_list_path = pairs_path
-    pycolmap.match_image_pairs(
-        database_path=datbase_dir,
-        matching_options=matching_options,
-        pairing_options=pairing_options,
-    )
+
+    if pairing_mode == "IMPORTED":
+        matched_pairs = list({(int(i), int(j)) for i, j in pairs.tolist()})
+
+        # Write the match pair to a file.
+        with open(dir_write + "/pairs.txt", "w") as f:
+            for i, j in matched_pairs:
+                f.write(f"{images_list[i]} {images_list[j]}\n")
+
+        pairs_path = dir_write + "/pairs.txt"
+        pairing_options = pycolmap.ImportedPairingOptions()
+        pairing_options.match_list_path = pairs_path
+        pycolmap.match_image_pairs(
+            database_path=database_dir,
+            matching_options=matching_options,
+            pairing_options=pairing_options,
+        )
+    elif pairing_mode == "SEQUENTIAL":
+        pairing_options = pycolmap.SequentialPairingOptions()
+        _set_option_if_present(
+            pairing_options, "overlap", sequential_overlap
+        )
+        _set_option_if_present(
+            pairing_options,
+            "quadratic_overlap",
+            sequential_quadratic_overlap,
+        )
+        pycolmap.match_sequential(
+            database_path=database_dir,
+            matching_options=matching_options,
+            pairing_options=pairing_options,
+        )
+    else:
+        raise ValueError(
+            "feature_pairing must be either 'imported' or 'sequential', "
+            f"got {feature_pairing!r}"
+        )
 
     return True
 

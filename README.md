@@ -17,7 +17,7 @@ The pipeline comprises:
 3. **Multi-view inference** — a configurable backbone (Pi3 / Pi3X / VGGT / MapAnything) estimates poses and geometry in local star configurations.
 4. **Global mapping** — rotation averaging, intrinsics averaging,
    similarity averaging, and global bundle adjustment fuse the local solutions.
-5. **Refinement** — SIFT track snapping with iterative augmented bundle adjustment.
+5. **Refinement** — COLMAP local features (default ALIKED + LightGlue with sequential matching), track snapping, and iterative augmented bundle adjustment.
 
 The orchestrator is [gluemap/controllers/gluemap_impl.py](gluemap/controllers/gluemap_impl.py).
 
@@ -124,6 +124,9 @@ The most-touched knobs:
 | `path_retrieval` / `path_tracker` / `path_dg` | SALAD / VGGSfM / Doppelgangers++ checkpoints. |
 | `camera_model` | COLMAP camera model (default `SIMPLE_PINHOLE`). |
 | `intrinsics_mode` | Intrinsics-bucketing strategy: `SHARED` (one camera per unique image shape, default), `PER_FOLDER` (one camera per `(dirname, shape)` pair), or `PER_CAMERA` (one camera per image). |
+| `feature_extractor` / `feature_matcher` | COLMAP local feature stack for refinement tracks. Defaults to `ALIKED_N16ROT` + `ALIKED_LIGHTGLUE` on COLMAP 4.x. |
+| `feature_pairing` / `feature_sequential_overlap` | Local feature pairing strategy. Defaults to COLMAP sequential matching; `feature_sequential_overlap: null` reuses `num_neighbors_sequential`. |
+| `feature_backend` | `auto` selects the safest backend. ALIKED uses the external `colmap` CLI when pycolmap wheels expose ALIKED enums but lack ONNX runtime support. |
 | `num_neighbors` | Neighbors per image in the retrieval graph (default `100`). |
 | `is_sequential` / `sample_frequency` | Use temporal pairing for ordered video; subsample every Nth frame. |
 | `is_multi_sequence` / `subfolder_regex` | Process several sibling sequences into a single reconstruction. |
